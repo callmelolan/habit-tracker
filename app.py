@@ -8,9 +8,16 @@ st.set_page_config(page_title="Habit Tracker", layout="centered")
 HABITS_FILE = "habits.csv"
 HISTORY_FILE = "history.csv"
 
+DEFAULT_HABITS = [
+    "Deep Work",
+    "Exercise",
+    "Learning",
+    "Sleep before 12"
+]
+
 def init_files():
     if not os.path.exists(HABITS_FILE):
-        pd.DataFrame(columns=["habit"]).to_csv(HABITS_FILE, index=False)
+        pd.DataFrame({"habit": DEFAULT_HABITS}).to_csv(HABITS_FILE, index=False)
     if not os.path.exists(HISTORY_FILE):
         pd.DataFrame(columns=["date", "habit", "completed"]).to_csv(HISTORY_FILE, index=False)
 
@@ -24,6 +31,11 @@ def save_habit(habit_name):
     df = load_habits()
     new_habit = pd.DataFrame({"habit": [habit_name]})
     df = pd.concat([df, new_habit], ignore_index=True)
+    df.to_csv(HABITS_FILE, index=False)
+
+def delete_habit(habit_name):
+    df = load_habits()
+    df = df[df["habit"] != habit_name]
     df.to_csv(HABITS_FILE, index=False)
 
 def save_completion(date, habit, completed):
@@ -73,7 +85,15 @@ else:
             if not habit_row.empty:
                 is_completed = bool(habit_row.iloc[0]['completed'])
         
-        checked = st.checkbox(habit_name, value=is_completed, key=f"habit_{idx}")
+        col1, col2 = st.columns([0.85, 0.15])
+        
+        with col1:
+            checked = st.checkbox(habit_name, value=is_completed, key=f"habit_{idx}")
+        
+        with col2:
+            if st.button("🗑️", key=f"del_{idx}"):
+                delete_habit(habit_name)
+                st.rerun()
         
         if checked != is_completed:
             save_completion(today_str, habit_name, checked)
