@@ -1,55 +1,63 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 import os
 
 st.set_page_config(page_title="Life Controller", layout="centered")
 
+IST = ZoneInfo("Asia/Kolkata")
 HABITS_FILE = "habits.csv"
 HISTORY_FILE = "history.csv"
 CONFIG_FILE = "config.csv"
 
-DEFAULT_HABITS = [
+CORE_HABITS = [
     "Focused Work",
     "Learn Something",
     "Move Body",
     "Sleep On Time"
 ]
 
-COLLEGE_SCHEDULE = {
-    "COLLEGE DAY": [
-        (time(6, 15), time(6, 25), "Wake up", None),
-        (time(6, 25), time(6, 45), "Learn Something", "Learn Something"),
-        (time(6, 45), time(7, 40), "Morning prep", None),
-        (time(7, 40), time(9, 0), "Commute", None),
-        (time(9, 0), time(16, 0), "College", None),
-        (time(16, 0), time(18, 0), "Commute / Break", None),
-        (time(18, 0), time(19, 0), "Focused Work", "Focused Work"),
-        (time(19, 0), time(19, 20), "Move Body", "Move Body"),
-        (time(19, 20), time(21, 45), "Free time", None),
-        (time(21, 45), time(22, 15), "Sleep prep", "Sleep On Time"),
-        (time(22, 15), time(23, 59), "Sleep", None)
-    ],
-    "HOLIDAY": [
-        (time(6, 30), time(7, 0), "Learn Something", "Learn Something"),
-        (time(7, 0), time(9, 0), "Morning routine", None),
-        (time(9, 0), time(10, 30), "Focused Work Block 1", "Focused Work"),
-        (time(10, 30), time(11, 0), "Break", None),
-        (time(11, 0), time(12, 30), "Focused Work Block 2", "Focused Work"),
-        (time(12, 30), time(16, 0), "Free time", None),
-        (time(16, 0), time(17, 0), "Move Body", "Move Body"),
-        (time(17, 0), time(22, 30), "Free time", None),
-        (time(22, 30), time(23, 59), "Sleep", "Sleep On Time")
-    ]
-}
+COLLEGE_SCHEDULE = [
+    (time(6, 15), time(6, 25), "Wake", None),
+    (time(6, 25), time(6, 45), "Learn Something", "Learn Something"),
+    (time(6, 45), time(7, 40), "Morning prep", None),
+    (time(7, 40), time(9, 0), "Commute", None),
+    (time(9, 0), time(16, 0), "College", None),
+    (time(16, 0), time(18, 0), "Commute / Break", None),
+    (time(18, 0), time(19, 0), "Focused Work", "Focused Work"),
+    (time(19, 0), time(19, 20), "Move Body", "Move Body"),
+    (time(19, 20), time(20, 0), "Free time", None),
+    (time(20, 0), time(21, 0), "Gaming", None),
+    (time(21, 0), time(21, 45), "Free time", None),
+    (time(21, 45), time(22, 15), "Sleep prep", "Sleep On Time"),
+    (time(22, 15), time(23, 59), "Sleep", None)
+]
+
+HOLIDAY_SCHEDULE = [
+    (time(6, 30), time(7, 0), "Learn Something", "Learn Something"),
+    (time(7, 0), time(9, 0), "Morning routine", None),
+    (time(9, 0), time(10, 30), "Focused Work Block 1", "Focused Work"),
+    (time(10, 30), time(11, 0), "Break", None),
+    (time(11, 0), time(12, 30), "Focused Work Block 2", "Focused Work"),
+    (time(12, 30), time(16, 0), "Free time", None),
+    (time(16, 0), time(17, 0), "Move Body", "Move Body"),
+    (time(17, 0), time(18, 0), "Free time", None),
+    (time(18, 0), time(20, 0), "Gaming", None),
+    (time(20, 0), time(22, 30), "Free time", None),
+    (time(22, 30), time(23, 59), "Sleep", "Sleep On Time")
+]
+
+def get_now_ist():
+    return datetime.now(IST)
 
 def init_files():
     if not os.path.exists(HABITS_FILE):
-        pd.DataFrame({"habit": DEFAULT_HABITS}).to_csv(HABITS_FILE, index=False)
+        pd.DataFrame({"habit": CORE_HABITS}).to_csv(HABITS_FILE, index=False)
     if not os.path.exists(HISTORY_FILE):
-        pd.DataFrame(columns=["date", "habit", "completed"]).to_csv(HISTORY_FILE, index=False)
+        pd.DataFrame(columns=["date", "habit", "completed", "day_type"]).to_csv(HISTORY_FILE, index=False)
     if not os.path.exists(CONFIG_FILE):
-        pd.DataFrame({"key": ["day_type"], "value": ["COLLEGE DAY"]}).to_csv(CONFIG_FILE, index=False)
+        pd.DataFrame({"key": ["day_type"], "value": ["College Day"]}).to_csv(CONFIG_FILE, index=False)
 
 def load_habits():
     return pd.read_csv(HABITS_FILE)
@@ -62,18 +70,22 @@ def load_config():
 
 def save_config(key, value):
     df = load_config()
-    df.loc[df['key'] == key, 'value'] = value
+    if key in df['key'].values:
+        df.loc[df['key'] == key, 'value'] = value
+    else:
+        new_row = pd.DataFrame({"key": [key], "value": [value]})
+        df = pd.concat([df, new_row], ignore_index=True)
     df.to_csv(CONFIG_FILE, index=False)
 
-def save_completion(date, habit, completed):
+def save_completion(date, habit, completed, day_type):
     df = load_history()
     df = df[~((df['date'] == date) & (df['habit'] == habit))]
-    new_entry = pd.DataFrame({"date": [date], "habit": [habit], "completed": [completed]})
+    new_entry = pd.DataFrame({"date": [date], "habit": [habit], "completed": [completed], "day_type": [day_type]})
     df = pd.concat([df, new_entry], ignore_index=True)
     df.to_csv(HISTORY_FILE, index=False)
 
 def get_current_action(day_type, current_time):
-    schedule = COLLEGE_SCHEDULE.get(day_type, COLLEGE_SCHEDULE["COLLEGE DAY"])
+    schedule = COLLEGE_SCHEDULE if day_type == "College Day" else HOLIDAY_SCHEDULE
     for start, end, action, habit in schedule:
         if start <= current_time < end:
             duration = (datetime.combine(datetime.today(), end) - datetime.combine(datetime.today(), current_time)).seconds // 60
@@ -84,7 +96,7 @@ def check_day_status(date_str, day_type):
     df = load_history()
     today_data = df[df['date'] == date_str]
     
-    if day_type == "COLLEGE DAY":
+    if day_type == "College Day":
         focused_work = today_data[today_data['habit'] == 'Focused Work']
         if focused_work.empty or not focused_work.iloc[0]['completed']:
             return "FAILED"
@@ -99,53 +111,92 @@ def check_day_status(date_str, day_type):
         return "SUCCESS"
     return "INCOMPLETE"
 
+def check_gaming_status(date_str, day_type):
+    df = load_history()
+    today_data = df[df['date'] == date_str]
+    
+    if day_type == "College Day":
+        focused_work = today_data[today_data['habit'] == 'Focused Work']
+        if not focused_work.empty and focused_work.iloc[0]['completed']:
+            return "ALLOWED"
+        return "LOCKED"
+    else:
+        focused_work = today_data[today_data['habit'] == 'Focused Work']
+        if not focused_work.empty and focused_work['completed'].any():
+            return "ALLOWED"
+        return "LOCKED"
+
+def get_weekly_analytics():
+    df = load_history()
+    if df.empty:
+        return None
+    
+    now_ist = get_now_ist()
+    last_7_days = [(now_ist - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
+    
+    df_week = df[df['date'].isin(last_7_days)]
+    
+    if df_week.empty:
+        return None
+    
+    summary = df_week.groupby('habit').agg(
+        total=('completed', 'count'),
+        completed=('completed', 'sum')
+    ).reset_index()
+    
+    summary['completion_pct'] = (summary['completed'] / summary['total'] * 100).round(1)
+    
+    return summary
+
 init_files()
 
-now = datetime.now()
-current_time = now.time()
-today_str = now.strftime("%Y-%m-%d")
+now_ist = get_now_ist()
+current_time = now_ist.time()
+today_str = now_ist.strftime("%Y-%m-%d")
 
 config_df = load_config()
-day_type = config_df[config_df['key'] == 'day_type']['value'].iloc[0]
+day_type_row = config_df[config_df['key'] == 'day_type']
+day_type = day_type_row['value'].iloc[0] if not day_type_row.empty else "College Day"
 
 st.title("⚡ Life Controller")
 
+st.subheader("📅 Day Type")
 col1, col2 = st.columns(2)
 with col1:
-    if st.button("COLLEGE DAY", use_container_width=True, type="primary" if day_type == "COLLEGE DAY" else "secondary"):
-        save_config("day_type", "COLLEGE DAY")
+    if st.button("College Day", use_container_width=True, type="primary" if day_type == "College Day" else "secondary"):
+        save_config("day_type", "College Day")
         st.rerun()
 with col2:
-    if st.button("HOLIDAY", use_container_width=True, type="primary" if day_type == "HOLIDAY" else "secondary"):
-        save_config("day_type", "HOLIDAY")
+    if st.button("Holiday", use_container_width=True, type="primary" if day_type == "Holiday" else "secondary"):
+        save_config("day_type", "Holiday")
         st.rerun()
+
+st.divider()
+
+st.subheader("⏰ Current Time (IST)")
+st.write(f"**{now_ist.strftime('%I:%M %p')} — {now_ist.strftime('%A, %B %d, %Y')}**")
 
 st.divider()
 
 action, habit_name, duration = get_current_action(day_type, current_time)
 
-st.subheader("⏰ NOW")
-st.write(f"**Time:** {now.strftime('%I:%M %p')}")
-st.write(f"**Day Type:** {day_type}")
+st.subheader("🎯 What Should I Be Doing Now?")
 st.write(f"**Action:** {action}")
 if duration > 0:
-    st.write(f"**Duration:** {duration} min")
+    st.write(f"**Time Remaining:** {duration} min")
 if habit_name:
     st.write(f"**Habit:** {habit_name}")
 
-st.divider()
-
-day_status = check_day_status(today_str, day_type)
-if day_status == "FAILED":
-    st.error("❌ DAY FAILED — Focused Work not completed")
-elif day_status == "SUCCESS":
-    st.success("✅ DAY SUCCESS")
-else:
-    st.info("⏳ DAY INCOMPLETE")
+gaming_status = check_gaming_status(today_str, day_type)
+if action == "Gaming":
+    if gaming_status == "ALLOWED":
+        st.success("🎮 Gaming ALLOWED")
+    else:
+        st.error("🔒 Gaming LOCKED — Complete Focused Work first")
 
 st.divider()
 
-st.subheader("📋 Today's Habits")
+st.subheader("✅ Today's Habits")
 
 habits_df = load_habits()
 history_df = load_history()
@@ -166,7 +217,7 @@ for idx, row in habits_df.iterrows():
     checked = st.checkbox(habit, value=is_completed, key=f"habit_{idx}")
     
     if checked != is_completed:
-        save_completion(today_str, habit, checked)
+        save_completion(today_str, habit, checked, day_type)
         st.rerun()
     
     if checked:
@@ -174,21 +225,28 @@ for idx, row in habits_df.iterrows():
 
 st.divider()
 
+day_status = check_day_status(today_str, day_type)
+if day_status == "FAILED":
+    st.error("❌ DAY FAILED — Focused Work not completed")
+elif day_status == "SUCCESS":
+    st.success("✅ DAY SUCCESS")
+else:
+    st.warning("⏳ DAY INCOMPLETE")
+
 progress = completed_count / total_habits if total_habits > 0 else 0
-st.write(f"**Progress:** {completed_count}/{total_habits}")
+st.write(f"**Progress:** {completed_count}/{total_habits} ({int(progress * 100)}%)")
 st.progress(progress)
 
-if not history_df.empty and len(history_df) > 0:
-    st.divider()
-    st.subheader("📈 Completion Rate")
+st.divider()
+
+st.subheader("📊 Weekly Analytics")
+
+weekly_data = get_weekly_analytics()
+
+if weekly_data is not None and not weekly_data.empty:
+    st.dataframe(weekly_data, use_container_width=True, hide_index=True)
     
-    daily = history_df.groupby('date').agg(
-        completed_count=('completed', 'sum'),
-        total_count=('completed', 'count')
-    ).reset_index()
-    
-    daily['completion_rate'] = (daily['completed_count'] / daily['total_count'] * 100).round(1)
-    daily['date'] = pd.to_datetime(daily['date'])
-    daily = daily.sort_values('date')
-    
-    st.line_chart(daily.set_index('date')['completion_rate'], use_container_width=True)
+    chart_data = weekly_data.set_index('habit')['completion_pct']
+    st.bar_chart(chart_data, use_container_width=True)
+else:
+    st.info("No data yet. Complete habits to see analytics.")
