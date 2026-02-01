@@ -4,19 +4,13 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 import os
 
-st.set_page_config(page_title="Life Controller", layout="centered")
+st.set_page_config(page_title="Life Controller", layout="centered", initial_sidebar_state="collapsed")
 
 IST = ZoneInfo("Asia/Kolkata")
-HABITS_FILE = "habits.csv"
 HISTORY_FILE = "history.csv"
 CONFIG_FILE = "config.csv"
 
-CORE_HABITS = [
-    "Focused Work",
-    "Learn Something",
-    "Move Body",
-    "Sleep On Time"
-]
+CORE_HABITS = ["Focused Work", "Learn Something", "Move Body", "Sleep On Time"]
 
 COLLEGE_SCHEDULE = [
     (time(6, 15), time(6, 25), "Wake", None),
@@ -52,15 +46,10 @@ def get_now_ist():
     return datetime.now(IST)
 
 def init_files():
-    if not os.path.exists(HABITS_FILE):
-        pd.DataFrame({"habit": CORE_HABITS}).to_csv(HABITS_FILE, index=False)
     if not os.path.exists(HISTORY_FILE):
-        pd.DataFrame(columns=["date", "habit", "completed", "day_type"]).to_csv(HISTORY_FILE, index=False)
+        pd.DataFrame(columns=["date", "habit", "completed", "day_type", "miss_reason"]).to_csv(HISTORY_FILE, index=False)
     if not os.path.exists(CONFIG_FILE):
         pd.DataFrame({"key": ["day_type"], "value": ["College Day"]}).to_csv(CONFIG_FILE, index=False)
-
-def load_habits():
-    return pd.read_csv(HABITS_FILE)
 
 def load_history():
     return pd.read_csv(HISTORY_FILE)
@@ -77,10 +66,16 @@ def save_config(key, value):
         df = pd.concat([df, new_row], ignore_index=True)
     df.to_csv(CONFIG_FILE, index=False)
 
-def save_completion(date, habit, completed, day_type):
+def save_completion(date, habit, completed, day_type, miss_reason=""):
     df = load_history()
     df = df[~((df['date'] == date) & (df['habit'] == habit))]
-    new_entry = pd.DataFrame({"date": [date], "habit": [habit], "completed": [completed], "day_type": [day_type]})
+    new_entry = pd.DataFrame({
+        "date": [date],
+        "habit": [habit],
+        "completed": [completed],
+        "day_type": [day_type],
+        "miss_reason": [miss_reason]
+    })
     df = pd.concat([df, new_entry], ignore_index=True)
     df.to_csv(HISTORY_FILE, index=False)
 
@@ -104,7 +99,7 @@ def check_day_status(date_str, day_type):
     if today_data.empty:
         return "INCOMPLETE"
     
-    total = len(today_data)
+    total = len(CORE_HABITS)
     completed = today_data['completed'].sum()
     
     if completed == total:
@@ -160,6 +155,64 @@ day_type = day_type_row['value'].iloc[0] if not day_type_row.empty else "College
 
 st.title("⚡ Life Controller")
 
+with st.expander("📘 What Counts as What"):
+    st.markdown("""
+    **Focused Work — COUNTS AS:**
+    - muLearn tasks
+    - NPTEL assignments
+    - Python practice
+    - App development (Habit Tracker / Jarvis)
+    - Debugging code
+    - Writing logic
+    - CLI / automation work
+    
+    **❌ Does NOT Count:**
+    - Watching videos
+    - Reading notes
+    - College classes
+    - Multitasking
+    - Casual browsing
+    
+    ---
+    
+    **Learn Something — COUNTS AS:**
+    - muLearn videos
+    - NPTEL videos
+    - Reading PDFs / notes
+    - Concept revision
+    
+    **❌ Does NOT Count:**
+    - Coding
+    - Assignments
+    - Projects
+    
+    ---
+    
+    **Move Body — COUNTS AS:**
+    - Walking
+    - Stretching
+    - Light workout
+    - Mobility drills
+    
+    **❌ Does NOT Count:**
+    - Sitting
+    - Gaming
+    - Scrolling
+    
+    ---
+    
+    **Sleep On Time — COUNTS AS:**
+    - Phone away by 9:45 PM
+    - In bed by 10:15 PM
+    
+    **❌ Does NOT Count:**
+    - "Almost slept"
+    - Late scrolling
+    - Late gaming
+    """)
+
+st.divider()
+
 st.subheader("📅 Day Type")
 col1, col2 = st.columns(2)
 with col1:
@@ -198,26 +251,39 @@ st.divider()
 
 st.subheader("✅ Today's Habits")
 
-habits_df = load_habits()
 history_df = load_history()
 today_history = history_df[history_df['date'] == today_str]
 
 completed_count = 0
-total_habits = len(habits_df)
 
-for idx, row in habits_df.iterrows():
-    habit = row['habit']
-    
+for habit in CORE_HABITS:
     is_completed = False
+    miss_reason = ""
+    
     if not today_history.empty:
         habit_row = today_history[today_history['habit'] == habit]
         if not habit_row.empty:
             is_completed = bool(habit_row.iloc[0]['completed'])
+            miss_reason = habit_row.iloc[0].get('miss_reason', "") if not is_completed else ""
     
-    checked = st.checkbox(habit, value=is_completed, key=f"habit_{idx}")
+    col1, col2 = st.columns([0.7, 0.3])
+    
+    with col1:
+        checked = st.checkbox(habit, value=is_completed, key=f"habit_{habit}")
+    
+    with col2:
+        if not is_completed and not checked:
+            reason = st.selectbox(
+                "Why?",
+                ["", "Time", "Energy", "Distraction"],
+                key=f"reason_{habit}",
+                label_visibility="collapsed"
+            )
+            if reason:
+                miss_reason = reason
     
     if checked != is_completed:
-        save_completion(today_str, habit, checked, day_type)
+        save_completion(today_str, habit, checked, day_type, miss_reason if not checked else "")
         st.rerun()
     
     if checked:
@@ -233,8 +299,8 @@ elif day_status == "SUCCESS":
 else:
     st.warning("⏳ DAY INCOMPLETE")
 
-progress = completed_count / total_habits if total_habits > 0 else 0
-st.write(f"**Progress:** {completed_count}/{total_habits} ({int(progress * 100)}%)")
+progress = completed_count / len(CORE_HABITS)
+st.write(f"**Progress:** {completed_count}/{len(CORE_HABITS)} ({int(progress * 100)}%)")
 st.progress(progress)
 
 st.divider()
